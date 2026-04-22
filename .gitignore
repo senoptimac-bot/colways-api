@@ -1,0 +1,14 @@
+# Fichier d'environnement local (mots de passe, clés) — ne pas committer
+.env
+.env.backup
+.env.production
+# Variantes (.env.local, .env.staging, etc.) — le modèle sans secrets reste versionné
+.env.*
+!.env.example
+
+# Laravel / PHP
+/vendor/
+.phpunit.result.cache
+
+# Logs et cache locaux
+*.log
