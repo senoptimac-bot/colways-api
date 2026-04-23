@@ -61,6 +61,7 @@ return [
     'allowed_origins_patterns' => [
         '/^http:\/\/localhost(:\d+)?$/',
         '/^http:\/\/127\.0\.0\.1(:\d+)?$/',
+        '/^https:\/\/.*\.vercel\.app$/',  // Autoriser tous les déploiements Vercel (Preview & Prod)
     ],
 
     /*

@@ -59,6 +59,7 @@ class Article extends Model
         'friperie_score',
         'guardian_flags',
         'published_at',
+        'arrivage',
     ];
 
     /**
