@@ -19,13 +19,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // SQLite ne supporte pas ALTER COLUMN — on passe par une colonne temporaire
-        Schema::table('articles', function (Blueprint $table) {
-            $table->string('condition_new', 30)->nullable()->after('condition');
-        });
+        // On sécurise au cas où la migration a planté au milieu la première fois
+        if (!Schema::hasColumn('articles', 'condition_new')) {
+            Schema::table('articles', function (Blueprint $table) {
+                $table->string('condition_new', 30)->nullable()->after('condition');
+            });
+        }
 
-        // Copier toutes les valeurs existantes
-        DB::statement('UPDATE articles SET condition_new = condition');
+        // Copier toutes les valeurs existantes (Backticks obligatoires sur MariaDB/MySQL car 'condition' est un mot réservé)
+        DB::statement('UPDATE articles SET condition_new = `condition`');
 
         Schema::table('articles', function (Blueprint $table) {
             $table->dropColumn('condition');
@@ -36,7 +38,7 @@ return new class extends Migration
         });
 
         // S'assurer que la colonne n'a pas de valeur nulle résiduelle
-        DB::statement("UPDATE articles SET condition = 'bon_etat' WHERE condition IS NULL");
+        DB::statement("UPDATE articles SET `condition` = 'bon_etat' WHERE `condition` IS NULL");
     }
 
     public function down(): void
