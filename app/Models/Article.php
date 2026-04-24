@@ -223,8 +223,12 @@ class Article extends Model
 
         // ── Calculs temporels en PHP (agnostique SQLite/MySQL) ────────────────
         $now          = now();
-        $cutoff48h    = $now->copy()->subHours(48)->toDateTimeString();  // fraîcheur
-        $cutoff7days  = $now->copy()->subDays(7)->toDateTimeString();    // nouveau vendeur
+        $cutoff6h     = $now->copy()->subHours(6)->toDateTimeString();
+        $cutoff12h    = $now->copy()->subHours(12)->toDateTimeString();
+        $cutoff24h    = $now->copy()->subHours(24)->toDateTimeString();
+        $cutoff48h    = $now->copy()->subHours(48)->toDateTimeString();
+        $cutoff7days  = $now->copy()->subDays(7)->toDateTimeString();
+
         $tierElite    = (int) ($cfg['tier_elite_pts']     ?? 60);
         $tierDisc     = (int) ($cfg['tier_discovery_pts'] ?? 30);
         $colobane     = (int) ($cfg['colobane_verified_pts']  ?? 25);
@@ -242,12 +246,12 @@ class Article extends Model
             ->selectRaw("
                 (
                     /* ── PILIER 1 : Mérite — qualité × 0.3 (max 30 pts) ─── */
-                    CAST(articles.friperie_score * {$qualMult} AS INTEGER)
+                    CAST(articles.friperie_score * {$qualMult} AS SIGNED)
 
                     /* ── Engagement : clics WhatsApp > 5% des vues ────────── */
                     + CASE
                         WHEN articles.views_count > 0
-                             AND CAST(articles.whatsapp_clicks AS FLOAT) / articles.views_count >= 0.05
+                             AND CAST(articles.whatsapp_clicks AS DECIMAL(10,2)) / articles.views_count >= 0.05
                         THEN {$engClicks}
                         ELSE 0
                       END
@@ -255,14 +259,12 @@ class Article extends Model
                     /* ── Engagement : partages WA Status ───────────────────── */
                     + CASE WHEN articles.share_count > 0 THEN {$engShares} ELSE 0 END
 
-                    /* ── PILIER 2 : Fraîcheur — décroît sur 48h ────────────── */
+                    /* ── PILIER 2 : Fraîcheur — décroît sur 48h (découpage en paliers portables) ─ */
                     + CASE
-                        WHEN articles.published_at >= ?
-                        THEN CAST(
-                            {$freshMax} * (1.0 - (
-                                (JULIANDAY('now') - JULIANDAY(articles.published_at)) * 24.0 / 48.0
-                            ))
-                        AS INTEGER)
+                        WHEN articles.published_at >= ? THEN {$freshMax}                     /* < 6h */
+                        WHEN articles.published_at >= ? THEN CAST({$freshMax} * 0.7 AS SIGNED) /* < 12h */
+                        WHEN articles.published_at >= ? THEN CAST({$freshMax} * 0.4 AS SIGNED) /* < 24h */
+                        WHEN articles.published_at >= ? THEN CAST({$freshMax} * 0.2 AS SIGNED) /* < 48h */
                         ELSE 0
                       END
 
@@ -281,11 +283,11 @@ class Article extends Model
 
                     /* ── PILIER 4 : Boost actif × multiplicateur qualité ────── */
                     + CASE
-                        WHEN articles.is_boosted = 1 AND articles.boost_expires_at > datetime('now')
+                        WHEN articles.is_boosted = 1 AND articles.boost_expires_at > ?
                         THEN CASE
-                            WHEN articles.friperie_score >= 70 THEN CAST({$boostBase} * 1.5 AS INTEGER)
+                            WHEN articles.friperie_score >= 70 THEN CAST({$boostBase} * 1.5 AS SIGNED)
                             WHEN articles.friperie_score >= 40 THEN {$boostBase}
-                            ELSE CAST({$boostBase} * 0.5 AS INTEGER)
+                            ELSE CAST({$boostBase} * 0.5 AS SIGNED)
                           END
                         ELSE 0
                       END
@@ -298,7 +300,11 @@ class Article extends Model
                       END
 
                 ) AS visibility_score
-            ", [$cutoff48h, $cutoff7days])
+            ", [
+                $cutoff6h, $cutoff12h, $cutoff24h, $cutoff48h, // Fraîcheur (4 paliers)
+                $cutoff7days,                                  // Nouveau vendeur
+                $now->toDateTimeString(),                      // Boost actif
+            ])
             ->orderByDesc('visibility_score')
             ->orderByDesc('articles.published_at');
     }
