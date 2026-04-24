@@ -91,7 +91,7 @@ class ArticleController extends Controller
     {
         $article->load([
             'images',
-            'shop:id,shop_name,quartier,avatar_url,is_colobane_verified,whatsapp_number,type',
+            'shop:id,shop_name,quartier,avatar_url,is_colobane_verified,type',
             'shop.user:id,name,whatsapp_number',
         ]);
 
