@@ -271,6 +271,70 @@ class FriperieGuardianService
     }
 
     /**
+     * Retourne des conseils personnalisés pour améliorer le score.
+     * Chaque conseil indique exactement combien de points il rapporte.
+     * Affiché au vendeur quand son article est sous le seuil de visibilité.
+     *
+     * @param  array $data   Données de l'article (title, description, images_count, ...)
+     * @param  int   $score  Score actuel
+     * @return array         Liste de conseils triés par impact décroissant
+     */
+    public function getScoreTips(array $data, int $score): array
+    {
+        $tips     = [];
+        $weights  = config('friperie.quality_weights');
+        $nbPhotos = (int) ($data['images_count'] ?? 0);
+        $descLen  = mb_strlen(trim($data['description'] ?? ''));
+        $titreLen = mb_strlen(trim($data['title'] ?? ''));
+        $titre    = strtolower(trim($data['title'] ?? ''));
+
+        // ── Photos ────────────────────────────────────────────────────────────
+        if ($nbPhotos === 0) {
+            $pts = $weights['photos_3_plus'] ?? 25;
+            $tips[] = ['icon' => '📸', 'text' => "Ajoute au moins 3 photos — c'est le facteur le plus important", 'pts' => "+{$pts} pts"];
+        } elseif ($nbPhotos === 1) {
+            $pts = ($weights['photos_3_plus'] ?? 25) - 5;
+            $tips[] = ['icon' => '📸', 'text' => "Ajoute 2 photos supplémentaires (tu en as 1 sur 3 minimum)", 'pts' => "+{$pts} pts"];
+        } elseif ($nbPhotos === 2) {
+            $pts = ($weights['photos_3_plus'] ?? 25) - ($weights['photos_min_2'] ?? 15);
+            $tips[] = ['icon' => '📸', 'text' => "Ajoute 1 photo de plus (2 sur 3 — presque !)", 'pts' => "+{$pts} pts"];
+        }
+
+        // ── Description ───────────────────────────────────────────────────────
+        if ($descLen === 0) {
+            $pts = $weights['description_80_chars'] ?? 20;
+            $tips[] = ['icon' => '✍️', 'text' => "Écris une description : marque, état, couleur, origine... (80 caractères = max)", 'pts' => "+{$pts} pts"];
+        } elseif ($descLen < 30) {
+            $pts = $weights['description_30_chars'] ?? 10;
+            $tips[] = ['icon' => '✍️', 'text' => "Ta description est trop courte ({$descLen} caractères). Vise au moins 30 caractères.", 'pts' => "+{$pts} pts"];
+        } elseif ($descLen < 80) {
+            $pts = ($weights['description_80_chars'] ?? 20) - ($weights['description_30_chars'] ?? 10);
+            $tips[] = ['icon' => '✍️', 'text' => "Allonge ta description à 80 caractères ({$descLen}/80 actuellement)", 'pts' => "+{$pts} pts"];
+        }
+
+        // ── Titre ─────────────────────────────────────────────────────────────
+        if ($titreLen < 10) {
+            $pts = $weights['title_10_chars'] ?? 10;
+            $tips[] = ['icon' => '🏷️', 'text' => "Titre trop court ({$titreLen} caractères). Vise au moins 10 caractères.", 'pts' => "+{$pts} pts"];
+        } elseif ($this->isTitleGeneric($titre)) {
+            $pts = $weights['title_non_generic'] ?? 10;
+            $tips[] = ['icon' => '🏷️', 'text' => "Titre trop générique — précise le type, la marque ou la couleur.", 'pts' => "+{$pts} pts"];
+        }
+
+        // ── Condition ─────────────────────────────────────────────────────────
+        if (empty($data['condition'])) {
+            $pts = $weights['condition_filled'] ?? 10;
+            $tips[] = ['icon' => '🔍', 'text' => "Indique l'état de l'article (neuf, bon état, usagé...)", 'pts' => "+{$pts} pts"];
+        }
+
+        // Trier par impact décroissant (les pts sont sous forme "+X pts")
+        usort($tips, fn($a, $b) => (int) filter_var($b['pts'], FILTER_SANITIZE_NUMBER_INT)
+                                 - (int) filter_var($a['pts'], FILTER_SANITIZE_NUMBER_INT));
+
+        return $tips;
+    }
+
+    /**
      * Message bienveillant expliquant pourquoi l'article est en review.
      * Affiché dans la réponse API au vendeur.
      */

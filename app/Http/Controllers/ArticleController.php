@@ -143,6 +143,21 @@ class ArticleController extends Controller
         $message = $article->guardian_message
             ?? "Ton article est en ligne. Les acheteurs vont adorer ! 🔥";
 
+        // Conseils de qualité personnalisés — affichés quand score < seuil
+        $threshold = config('friperie.visibility_threshold', 40);
+        $scoreTips = [];
+        if ($article->friperie_score < $threshold) {
+            $guardian  = app(\App\Services\FriperieGuardianService::class);
+            $scoreTips = $guardian->getScoreTips([
+                'title'        => $request->title,
+                'description'  => $request->description,
+                'images_count' => 0, // photos pas encore uploadées au moment du store
+                'condition'    => $request->condition,
+                'price'        => $request->price,
+                'category'     => $request->category,
+            ], $article->friperie_score);
+        }
+
         // Code HTTP : 201 si publié directement, 202 si en attente de review
         $httpCode = $article->status === 'pending_review' ? 202 : 201;
 
@@ -150,6 +165,7 @@ class ArticleController extends Controller
             'message'        => $message,
             'status'         => $article->status,
             'friperie_score' => $article->friperie_score,
+            'score_tips'     => $scoreTips,   // [] si score OK, conseils sinon
             'article'        => $article,
         ], $httpCode);
     }
