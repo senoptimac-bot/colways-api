@@ -80,7 +80,10 @@ class ArticleController extends Controller
 
         $articles = $query->paginate(15);
 
-        return response()->json($articles);
+        // Cache HTTP : 2 min côté client/CDN, stale-while-revalidate 1 min.
+        // Réduit les allers-retours réseau sur 3G lors des scrolls/pull-to-refresh.
+        return response()->json($articles)
+            ->header('Cache-Control', 'public, max-age=120, stale-while-revalidate=60');
     }
 
     /**
