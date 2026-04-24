@@ -30,8 +30,7 @@ class ArticleController extends Controller
         $threshold = config('friperie.visibility_threshold', 40);
 
         $query = Article::query()
-            // ->weightedSort()
-            ->latest()
+            ->weightedSort()
             // Sous-requête SQL : première photo de chaque article
             ->addSelect([
                 'first_image_url' => ArticleImage::select('image_url')
@@ -50,9 +49,9 @@ class ArticleController extends Controller
                       $sub->where('articles.status', 'sold')
                           ->where('articles.updated_at', '>=', now()->subHours(48));
                   });
-            });
+            })
             // Seuil de qualité minimum — articles trop pauvres invisibles dans le feed
-            // ->where('articles.friperie_score', '>=', $threshold)
+            ->where('articles.friperie_score', '>=', $threshold)
 
             // Filtre B2C / B2B
             ->when($request->mode === 'b2b', fn($q) => $q->whereHas('shop', fn($s) => $s->where('type', 'grossiste')))
