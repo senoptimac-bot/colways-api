@@ -78,7 +78,7 @@ class ArticleController extends Controller
                   ->where('articles.story_added_at', '>=', now()->subHours(24))
             );
 
-        $articles = $query->paginate(20);
+        $articles = $query->paginate(15);
 
         return response()->json($articles);
     }

@@ -270,11 +270,11 @@ class ShopController extends Controller
         $articles = $shop->articles;
 
         $stats = [
-            'total_views'     => (int) $articles->sum('views_count'),
-            'total_contacts'  => (int) $articles->sum('whatsapp_clicks'),
-            'total_shares'    => (int) $articles->sum('share_count'),
-            'articles_count'  => $articles->count(),
-            'active_boosts'   => $articles->where('is_boosted', true)->count(),
+            'total_views'     => (int) $shop->articles()->sum('views_count'),
+            'total_contacts'  => (int) $shop->articles()->sum('whatsapp_clicks'),
+            'total_shares'    => (int) $shop->articles()->sum('share_count'),
+            'articles_count'  => $shop->articles()->count(),
+            'active_boosts'   => $shop->articles()->where('is_boosted', true)->count(),
         ];
 
         // Dernières offres reçues pour l'étal
@@ -386,10 +386,14 @@ class ShopController extends Controller
         $hasDescription = !empty($shop->description);
         $hasArticle     = $articlesTotal >= 1;
 
-        // ── Performance ─────────────────────────────────────────────────────
-        $totalViews    = $shop->articles()->sum('views_count');
-        $totalContacts = $shop->articles()->sum('whatsapp_clicks');
-        $totalShares   = $shop->articles()->sum('shares_count');
+        // ── Performance — Agrégations directes SQL (Évite de charger 1000 articles en RAM) ──
+        $performance = $shop->articles()
+            ->selectRaw('SUM(views_count) as total_views, SUM(whatsapp_clicks) as total_contacts, SUM(share_count) as total_shares')
+            ->first();
+
+        $totalViews    = (int) ($performance->total_views ?? 0);
+        $totalContacts = (int) ($performance->total_contacts ?? 0);
+        $totalShares   = (int) ($performance->total_shares ?? 0);
 
         // ── Story VIP ───────────────────────────────────────────────────────
         $wallet           = $user->getOrCreateWallet();
