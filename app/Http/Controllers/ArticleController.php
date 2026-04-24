@@ -30,9 +30,7 @@ class ArticleController extends Controller
         $threshold = config('friperie.visibility_threshold', 40);
 
         $query = Article::query()
-            // ->weightedSort()
             ->latest()
-            // Sous-requête SQL : première photo de chaque article
             ->addSelect([
                 'first_image_url' => ArticleImage::select('image_url')
                     ->whereColumn('article_id', 'articles.id')
@@ -41,43 +39,9 @@ class ArticleController extends Controller
             ])
             ->with([
                 'shop:id,shop_name,quartier,avatar_url,is_colobane_verified,account_tier,is_verified_seller',
-            ])
-            // ── PILIER 0 : Identité — seuls les articles validés apparaissent ──
-            ->where(function ($q) {
-                $q->where('articles.status', 'available')
-                  ->orWhere(function ($sub) {
-                      // Preuve sociale : articles vendus restent visibles 48h max, puis disparaissent du feed
-                      $sub->where('articles.status', 'sold')
-                          ->where('articles.updated_at', '>=', now()->subHours(48));
-                  });
-            });
-            // Seuil de qualité minimum — articles trop pauvres invisibles dans le feed
-            // ->where('articles.friperie_score', '>=', $threshold)
+            ]);
 
-            // Filtre B2C / B2B
-            ->when($request->mode === 'b2b', fn($q) => $q->whereHas('shop', fn($s) => $s->where('type', 'grossiste')))
-            ->when($request->mode === 'b2c', fn($q) => $q->whereHas('shop', fn($s) => $s->where('type', 'particulier')))
-
-            // Filtres standards
-            ->when($request->category, fn($q) => $q->where('articles.category', $request->category))
-            ->when($request->quartier, fn($q) => $q->whereHas('shop', fn($s) => $s->where('quartier', $request->quartier)))
-            ->when($request->search, fn($q) => $q->where(fn($s) =>
-                $s->where('articles.title', 'like', '%' . $request->search . '%')
-                  ->orWhere('articles.description', 'like', '%' . $request->search . '%')
-            ))
-            ->when($request->min_price, fn($q) => $q->where('articles.price', '>=', (int) $request->min_price))
-            ->when($request->max_price, fn($q) => $q->where('articles.price', '<=', (int) $request->max_price))
-
-            // Filtres spécifiques
-            ->when($request->filled('sizes'), fn($q) => $q->whereIn('articles.size', (array) $request->input('sizes')))
-            ->when($request->filled('colors'), fn($q) => $q->whereIn('articles.color', (array) $request->input('colors')))
-            ->when($request->filled('conditions'), fn($q) => $q->whereIn('articles.condition', (array) $request->input('conditions')))
-            ->when($request->date_filter === 'today', fn($q) => $q->whereDate('articles.created_at', today()))
-            ->when($request->date_filter === 'week', fn($q) => $q->where('articles.created_at', '>=', now()->startOfWeek()))
-            ->when($request->boolean('is_story'), fn($q) =>
-                $q->where('articles.is_story', true)
-                  ->where('articles.story_added_at', '>=', now()->subHours(24))
-            );
+        $articles = $query->paginate(15);
 
         $articles = $query->paginate(15);
 
