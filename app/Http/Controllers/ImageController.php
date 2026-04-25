@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\ArticleImage;
+use App\Models\CreditTransaction;
 use App\Services\CloudinaryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,17 +55,35 @@ class ImageController extends Controller
         $user      = $request->user();
 
         if ($detourage) {
+            // ── 1. Quota mensuel global (limite Remove.bg : 50 images/mois) ──
+            // On bloque à 45 pour garder 5 de marge en cas d'erreurs réessayées.
+            $QUOTA_MENSUEL = 45;
+            $utiliseCeMois = CreditTransaction::where('reason', 'detourage_premium')
+                ->whereYear('created_at',  now()->year)
+                ->whereMonth('created_at', now()->month)
+                ->count();
+
+            if ($utiliseCeMois >= $QUOTA_MENSUEL) {
+                return response()->json([
+                    'message' => 'Le Détourage Premium est temporairement indisponible ce mois-ci. Réessaie le mois prochain ou contacte le support.',
+                    'error'   => 'quota_mensuel_atteint',
+                    'quota'   => $QUOTA_MENSUEL,
+                    'utilise' => $utiliseCeMois,
+                ], 422);
+            }
+
+            // ── 2. Vérification solde ────────────────────────────────────────
             $wallet = $user->getOrCreateWallet();
 
             if (! $wallet->hasEnough(2)) {
                 return response()->json([
                     'message' => 'Solde insuffisant. Il te faut 2 Jetons pour le Détourage Premium.',
-                    'error'   => 'insufficient_jetons',   // utilisé par le frontend pour le fallback
+                    'error'   => 'insufficient_jetons',
                     'balance' => $wallet->credits,
                 ], 422);
             }
 
-            // Débit forfaitaire : 2 Jetons pour l'article entier (pas par photo)
+            // ── 3. Débit forfaitaire : 2 Jetons pour l'article entier ────────
             $wallet->spendCredits(2, 'detourage_premium', 'article_' . $article->id);
         }
 
