@@ -68,6 +68,7 @@ class CreditTransaction extends Model
             'manual_topup'          => 'Rechargement manuel (Wave)',
             'boost_coup_de_pioche'  => 'Coup de Pioche (Bump Feed)',
             'boost_story'           => 'Placement Story VIP',
+            'detourage_premium'     => 'Détourage Premium Article',
             'admin_gift'            => 'Cadeau administrateur',
             'refund'                => 'Remboursement',
             default                 => $this->reason,

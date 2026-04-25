@@ -72,6 +72,57 @@ class CloudinaryService
     }
 
     /**
+     * Upload une image avec Détourage IA Cloudinary (fond blanc pur).
+     *
+     * Utilisé exclusivement pour le Détourage Premium (2 Jetons).
+     * Le wallet est déjà débité par l'ImageController avant cet appel.
+     *
+     * Cloudinary AI retire automatiquement le fond et le remplace par du blanc.
+     * Prérequis : add-on "Cloudinary AI Background Removal" activé sur le compte.
+     *
+     * @param UploadedFile $file    Le fichier image à traiter
+     * @param string       $folder  Dossier Cloudinary (ex: 'colways/articles')
+     * @return array{ url: string, cloudinary_id: string }
+     */
+    public function uploadWithDetourage(UploadedFile $file, string $folder): array
+    {
+        // Bypass local (développement sans clés Cloudinary)
+        if (!config('services.cloudinary.api_secret')) {
+            $path = $file->store($folder, 'public');
+            return [
+                'url'           => url('storage/' . $path),
+                'cloudinary_id' => 'local_' . $path,
+            ];
+        }
+
+        $resultat = $this->cloudinary->uploadApi()->upload(
+            $file->getRealPath(),
+            [
+                'folder'             => $folder,
+                'resource_type'      => 'image',
+                // ── Détourage IA Cloudinary ──────────────────────────────────
+                // Retire le fond automatiquement via le modèle IA de Cloudinary.
+                // Add-on requis : https://cloudinary.com/addons/cloudinary_ai_background_removal
+                'background_removal' => 'cloudinary_ai',
+                // Fond blanc après détourage + optimisations habituelles
+                'transformation'     => [
+                    'background' => 'white',
+                    'width'      => 800,
+                    'height'     => 800,
+                    'crop'       => 'limit',
+                    'quality'    => 'auto:good',
+                    'format'     => 'auto',
+                ],
+            ]
+        );
+
+        return [
+            'url'           => $resultat['secure_url'],
+            'cloudinary_id' => $resultat['public_id'],
+        ];
+    }
+
+    /**
      * Supprime un fichier de Cloudinary via son identifiant.
      * Appelé quand un article est supprimé ou qu'une image est retirée.
      *

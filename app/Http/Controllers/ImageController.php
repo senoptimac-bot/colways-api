@@ -32,9 +32,11 @@ class ImageController extends Controller
         }
 
         $request->validate([
-            'images'   => ['required', 'array', 'min:1', 'max:5'],
+            'images'             => ['required', 'array', 'min:1', 'max:5'],
             // 'image' seul échoue avec React Native — on utilise mimes explicitement
-            'images.*' => ['file', 'mimes:jpeg,jpg,png,webp,heic,heif', 'max:5120'],
+            'images.*'           => ['file', 'mimes:jpeg,jpg,png,webp,heic,heif', 'max:5120'],
+            // Flag optionnel envoyé par le frontend quand le Détourage Premium est activé
+            'background_removal' => ['sometimes', 'boolean'],
         ]);
 
         // Vérifier qu'on ne dépasse pas 5 photos au total
@@ -47,14 +49,36 @@ class ImageController extends Controller
             ], 422);
         }
 
+        // ── Détourage Premium — vérification & débit wallet ───────────────────
+        $detourage = filter_var($request->input('background_removal', false), FILTER_VALIDATE_BOOLEAN);
+        $user      = $request->user();
+
+        if ($detourage) {
+            $wallet = $user->getOrCreateWallet();
+
+            if (! $wallet->hasEnough(2)) {
+                return response()->json([
+                    'message' => 'Solde insuffisant. Il te faut 2 Jetons pour le Détourage Premium.',
+                    'error'   => 'insufficient_jetons',   // utilisé par le frontend pour le fallback
+                    'balance' => $wallet->credits,
+                ], 422);
+            }
+
+            // Débit forfaitaire : 2 Jetons pour l'article entier (pas par photo)
+            $wallet->spendCredits(2, 'detourage_premium', 'article_' . $article->id);
+        }
+
+        // ── Upload des photos ─────────────────────────────────────────────────
         $imagesCreees = [];
 
         foreach ($request->file('images') as $fichier) {
             // La position détermine l'ordre d'affichage (0 = photo principale)
             $position = $article->images()->count();
 
-            // Upload vers Cloudinary — compressé automatiquement
-            $resultat = $cloudinary->upload($fichier, 'colways/articles');
+            // Choix de la méthode d'upload selon le mode
+            $resultat = $detourage
+                ? $cloudinary->uploadWithDetourage($fichier, 'colways/articles')
+                : $cloudinary->upload($fichier, 'colways/articles');
 
             $image = ArticleImage::create([
                 'article_id'    => $article->id,
@@ -66,9 +90,12 @@ class ImageController extends Controller
             $imagesCreees[] = $image;
         }
 
+        $nb = count($imagesCreees);
+
         return response()->json([
-            'message' => count($imagesCreees) . ' photo(s) ajoutée(s).',
-            'images'  => $imagesCreees,
+            'message'                    => "{$nb} photo(s) ajoutée(s)." . ($detourage ? ' ✨ Détourage Premium appliqué.' : ''),
+            'images'                     => $imagesCreees,
+            'background_removal_applied' => $detourage,
         ], 201);
     }
 
