@@ -80,14 +80,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Google Gemini — IA analyse photo pour auto-remplissage articles
+    | Google Gemini — IA analyse photo (désactivé, remplacé par Claude)
     |--------------------------------------------------------------------------
-    | Modèle : gemini-1.5-flash (vision multimodale, rapide et gratuit)
-    | Clé à créer sur : aistudio.google.com/app/apikey
-    | Ajouter dans .env : GEMINI_API_KEY=votre_clé
     */
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Anthropic Claude — IA analyse photo pour auto-remplissage articles
+    |--------------------------------------------------------------------------
+    | Modèle : claude-3-haiku-20240307 (vision multimodale, rapide, ~$0.001/analyse)
+    | Clé à créer sur : console.anthropic.com
+    | Ajouter dans .env : ANTHROPIC_API_KEY=sk-ant-votre_clé
+    */
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY', ''),
     ],
 
     /*

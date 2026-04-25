@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\Log;
 class AiController extends Controller
 {
     /**
-     * Analyse une photo d'article via Google Gemini 1.5 Flash.
+     * Analyse une photo d'article via Claude 3 Haiku (Anthropic).
      *
-     * Reçoit une image, la convertit en base64, l'envoie à l'API Gemini
+     * Reçoit une image, la convertit en base64, l'envoie à l'API Anthropic
      * avec un prompt copywriter sénégalais, et renvoie un JSON propre
      * avec : titre, categorie, description.
      *
@@ -24,17 +24,22 @@ class AiController extends Controller
             'image' => ['required', 'file', 'mimes:jpeg,jpg,png,webp,heic', 'max:5120'],
         ]);
 
-        $apiKey = trim(config('services.gemini.api_key', ''));
+        $apiKey = trim(config('services.anthropic.api_key', ''));
 
         if (empty($apiKey)) {
-            Log::warning('[Gemini] GEMINI_API_KEY absent du .env');
+            Log::warning('[Claude] ANTHROPIC_API_KEY absent du .env');
             return response()->json(['message' => 'Service IA non configuré.'], 503);
         }
 
         // ── Conversion image → base64 ─────────────────────────────────────────
         $file     = $request->file('image');
         $mimeType = $file->getMimeType() ?? 'image/jpeg';
-        $base64   = base64_encode(file_get_contents($file->getRealPath()));
+        // Anthropic accepte uniquement : image/jpeg, image/png, image/gif, image/webp
+        $supportedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!in_array($mimeType, $supportedMimes)) {
+            $mimeType = 'image/jpeg';
+        }
+        $base64 = base64_encode(file_get_contents($file->getRealPath()));
 
         // ── Prompt copywriter Galsen ──────────────────────────────────────────
         $prompt = <<<PROMPT
@@ -47,46 +52,51 @@ Règles de rédaction :
 Renvoie UNIQUEMENT un objet JSON valide (sans balises markdown, sans texte autour) avec les clés : titre (accrocheur, max 50 caractères), categorie (une des valeurs listées), et description (le texte persuasif).
 PROMPT;
 
-        // ── Appel API Gemini 1.5 Flash ────────────────────────────────────────
+        // ── Appel API Anthropic (Claude 3 Haiku) ─────────────────────────────
         try {
             $response = Http::timeout(30)
-                ->withHeaders(['Content-Type' => 'application/json'])
-                ->post(
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . $apiKey,
-                    [
-                        'contents' => [
-                            [
-                                'parts' => [
-                                    ['text' => $prompt],
-                                    [
-                                        'inline_data' => [
-                                            'mime_type' => $mimeType,
-                                            'data'      => $base64,
-                                        ],
+                ->withHeaders([
+                    'x-api-key'         => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type'      => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model'      => 'claude-3-haiku-20240307',
+                    'max_tokens' => 512,
+                    'messages'   => [
+                        [
+                            'role'    => 'user',
+                            'content' => [
+                                [
+                                    'type'   => 'image',
+                                    'source' => [
+                                        'type'       => 'base64',
+                                        'media_type' => $mimeType,
+                                        'data'       => $base64,
                                     ],
+                                ],
+                                [
+                                    'type' => 'text',
+                                    'text' => $prompt,
                                 ],
                             ],
                         ],
-                        'generationConfig' => [
-                            'temperature'     => 0.7,
-                            'maxOutputTokens' => 512,
-                        ],
-                    ]
-                );
+                    ],
+                ]);
 
-            Log::info('[Gemini] Status : ' . $response->status());
+            Log::info('[Claude] Status : ' . $response->status());
 
             if (!$response->successful()) {
-                Log::warning('[Gemini] Erreur HTTP ' . $response->status() . ' — ' . substr($response->body(), 0, 300));
+                Log::warning('[Claude] Erreur HTTP ' . $response->status() . ' — ' . substr($response->body(), 0, 300));
                 return response()->json(['message' => 'Erreur de l\'IA. Réessaie.'], 502);
             }
 
             // ── Extraction du texte généré ────────────────────────────────────
             $body = $response->json();
-            $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
+            $text = $body['content'][0]['text'] ?? null;
 
             if (!$text) {
-                Log::warning('[Gemini] Réponse vide ou structure inattendue : ' . json_encode($body));
+                Log::warning('[Claude] Réponse vide ou structure inattendue : ' . json_encode($body));
                 return response()->json(['message' => 'Réponse IA invalide. Réessaie.'], 502);
             }
 
@@ -98,7 +108,7 @@ PROMPT;
             $parsed = json_decode($text, true);
 
             if (!$parsed || !isset($parsed['titre'], $parsed['categorie'], $parsed['description'])) {
-                Log::warning('[Gemini] JSON invalide reçu : ' . $text);
+                Log::warning('[Claude] JSON invalide reçu : ' . $text);
                 return response()->json(['message' => 'Format IA invalide. Réessaie.'], 502);
             }
 
@@ -108,7 +118,7 @@ PROMPT;
                 $parsed['categorie'] = 'vetements'; // fallback sûr
             }
 
-            Log::info('[Gemini] ✅ Succès — titre: ' . $parsed['titre']);
+            Log::info('[Claude] ✅ Succès — titre: ' . $parsed['titre']);
 
             return response()->json([
                 'titre'       => $parsed['titre'],
@@ -117,7 +127,7 @@ PROMPT;
             ]);
 
         } catch (\Exception $e) {
-            Log::warning('[Gemini] Exception : ' . $e->getMessage());
+            Log::warning('[Claude] Exception : ' . $e->getMessage());
             return response()->json(['message' => 'Erreur réseau IA. Réessaie.'], 503);
         }
     }
