@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ShopController;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\ImageController;
+use App\Http\Controllers\AiController;
 use App\Http\Controllers\BoostController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\MapController;
@@ -54,6 +55,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('shops/{shop}/cover',  [ShopController::class, 'uploadCover'])->name('shops.cover');
     Route::post('my/shop/story-boost', [ShopController::class, 'storyBoost'])->name('shops.story-boost');
     Route::get ('my/shop/trust-center', [ShopController::class, 'trustCenter'])->name('shops.trust-center');
+});
+
+// ─── IA — Analyse photo (Gemini) ─────────────────────────────────────────────
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('articles/analyze-image', [AiController::class, 'analyzeImage'])->name('ai.analyze');
 });
 
 // ─── Articles ────────────────────────────────────────────────────────────────

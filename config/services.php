@@ -80,6 +80,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google Gemini — IA analyse photo pour auto-remplissage articles
+    |--------------------------------------------------------------------------
+    | Modèle : gemini-1.5-flash (vision multimodale, rapide et gratuit)
+    | Clé à créer sur : aistudio.google.com/app/apikey
+    | Ajouter dans .env : GEMINI_API_KEY=votre_clé
+    */
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Google OAuth — Vérification des tokens ID côté backend
     |--------------------------------------------------------------------------
     | Ces IDs doivent correspondre exactement aux OAuth Client IDs configurés
