@@ -72,15 +72,18 @@ class CloudinaryService
     }
 
     /**
-     * Upload une image avec Détourage IA Cloudinary (fond blanc pur).
+     * Upload une image avec Détourage IA via Remove.bg (fond blanc pur).
      *
-     * Utilisé exclusivement pour le Détourage Premium (2 Jetons).
-     * Le wallet est déjà débité par l'ImageController avant cet appel.
+     * Flow :
+     *   1. Envoie l'image à l'API Remove.bg → JPG avec fond blanc en 2-3s
+     *   2. Sauvegarde temporaire sur le serveur
+     *   3. Upload le fichier traité vers Cloudinary
+     *   4. Supprime le fichier temporaire
      *
-     * Cloudinary AI retire automatiquement le fond et le remplace par du blanc.
-     * Prérequis : add-on "Cloudinary AI Background Removal" activé sur le compte.
+     * Fallback : si Remove.bg échoue (quota, erreur réseau, clé manquante),
+     *            on fait un upload Cloudinary classique sans détourage.
      *
-     * @param UploadedFile $file    Le fichier image à traiter
+     * @param UploadedFile $file    Le fichier image original
      * @param string       $folder  Dossier Cloudinary (ex: 'colways/articles')
      * @return array{ url: string, cloudinary_id: string }
      */
@@ -95,32 +98,55 @@ class CloudinaryService
             ];
         }
 
-        $resultat = $this->cloudinary->uploadApi()->upload(
-            $file->getRealPath(),
-            [
-                'folder'             => $folder,
-                'resource_type'      => 'image',
-                // ── Détourage IA — Cloudinary AI (instantané) ───────────────
-                // Retire le fond via l'IA native Cloudinary en quelques secondes.
-                // Pixelz = async (designers humains, heures d'attente) → non adapté.
-                // cloudinary_ai = traitement IA instantané côté serveur Cloudinary.
-                'background_removal' => 'cloudinary_ai',
-                // Fond blanc après détourage + optimisations habituelles
-                'transformation'     => [
-                    'background' => 'white',
-                    'width'      => 800,
-                    'height'     => 800,
-                    'crop'       => 'limit',
-                    'quality'    => 'auto:good',
-                    'format'     => 'auto',
-                ],
-            ]
-        );
+        $apiKey = config('services.removebg.api_key');
 
-        return [
-            'url'           => $resultat['secure_url'],
-            'cloudinary_id' => $resultat['public_id'],
-        ];
+        // ── Étape 1 : Détourage via Remove.bg ───────────────────────────────
+        if ($apiKey) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-Api-Key' => $apiKey,
+                ])
+                ->attach('image_file', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+                ->post('https://api.remove.bg/v1.0/removebg', [
+                    'size'     => 'auto',
+                    'bg_color' => 'ffffff',  // Fond blanc pur
+                    'format'   => 'jpg',     // JPG (pas PNG transparent)
+                ]);
+
+                if ($response->successful()) {
+                    // ── Étape 2 : Fichier temporaire ────────────────────────
+                    $tempPath = tempnam(sys_get_temp_dir(), 'colways_bg_') . '.jpg';
+                    file_put_contents($tempPath, $response->body());
+
+                    // ── Étape 3 : Upload vers Cloudinary ────────────────────
+                    $resultat = $this->cloudinary->uploadApi()->upload($tempPath, [
+                        'folder'         => $folder,
+                        'resource_type'  => 'image',
+                        'transformation' => $this->getTransformation($folder),
+                    ]);
+
+                    // ── Étape 4 : Nettoyage du fichier temporaire ───────────
+                    @unlink($tempPath);
+
+                    return [
+                        'url'           => $resultat['secure_url'],
+                        'cloudinary_id' => $resultat['public_id'],
+                    ];
+                }
+
+                \Illuminate\Support\Facades\Log::warning(
+                    '[Détourage] Remove.bg erreur HTTP ' . $response->status()
+                );
+
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('[Détourage] Remove.bg exception: ' . $e->getMessage());
+            }
+        } else {
+            \Illuminate\Support\Facades\Log::warning('[Détourage] REMOVEBG_API_KEY absent du .env');
+        }
+
+        // ── Fallback : upload Cloudinary classique si Remove.bg indisponible ─
+        return $this->upload($file, $folder);
     }
 
     /**

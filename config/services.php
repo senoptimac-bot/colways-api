@@ -69,6 +69,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Remove.bg — Détourage IA instantané (fond blanc sur photos d'articles)
+    |--------------------------------------------------------------------------
+    | API gratuite : 50 images/mois. Clé à récupérer sur remove.bg/api
+    | Ajouter dans .env Hostinger : REMOVEBG_API_KEY=votre_clé
+    */
+    'removebg' => [
+        'api_key' => env('REMOVEBG_API_KEY', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Google OAuth — Vérification des tokens ID côté backend
     |--------------------------------------------------------------------------
     | Ces IDs doivent correspondre exactement aux OAuth Client IDs configurés
