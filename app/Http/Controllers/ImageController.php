@@ -72,32 +72,38 @@ class ImageController extends Controller
                 ], 422);
             }
 
-            // ── 2. Vérification solde ────────────────────────────────────────
+            // ── 2. Vérification solde (25 Jetons) ───────────────────────────
             $wallet = $user->getOrCreateWallet();
 
-            if (! $wallet->hasEnough(2)) {
+            if (! $wallet->hasEnough(25)) {
                 return response()->json([
-                    'message' => 'Solde insuffisant. Il te faut 2 Jetons pour le Détourage Premium.',
+                    'message' => 'Solde insuffisant. Il te faut 25 Jetons pour le Détourage Premium.',
                     'error'   => 'insufficient_jetons',
                     'balance' => $wallet->credits,
                 ], 422);
             }
 
-            // ── 3. Débit forfaitaire : 2 Jetons pour l'article entier ────────
-            $wallet->spendCredits(2, 'detourage_premium', 'article_' . $article->id);
+            // ── 3. Débit : 25 Jetons, photo principale uniquement ────────────
+            $wallet->spendCredits(25, 'detourage_premium', 'article_' . $article->id);
         }
 
         // ── Upload des photos ─────────────────────────────────────────────────
         $imagesCreees = [];
+        $indexUpload  = 0; // Compteur pour identifier la photo principale (index 0)
 
         foreach ($request->file('images') as $fichier) {
             // La position détermine l'ordre d'affichage (0 = photo principale)
             $position = $article->images()->count();
 
-            // Choix de la méthode d'upload selon le mode
-            $resultat = $detourage
+            // Détourage UNIQUEMENT sur la première image (index 0).
+            // Les suivantes sont uploadées normalement → 1 seul crédit Remove.bg consommé.
+            $appliquerDetourage = $detourage && ($indexUpload === 0);
+
+            $resultat = $appliquerDetourage
                 ? $cloudinary->uploadWithDetourage($fichier, 'colways/articles')
                 : $cloudinary->upload($fichier, 'colways/articles');
+
+            $indexUpload++;
 
             $image = ArticleImage::create([
                 'article_id'    => $article->id,
