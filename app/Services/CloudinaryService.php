@@ -98,20 +98,26 @@ class CloudinaryService
             ];
         }
 
-        $apiKey = config('services.removebg.api_key');
+        $apiKey = trim(config('services.removebg.api_key', ''));
+
+        \Illuminate\Support\Facades\Log::info('[Détourage] Clé Remove.bg présente : ' . (empty($apiKey) ? 'NON' : 'OUI (' . strlen($apiKey) . ' chars)'));
 
         // ── Étape 1 : Détourage via Remove.bg ───────────────────────────────
-        if ($apiKey) {
+        if (!empty($apiKey)) {
             try {
+                // Tous les paramètres en multipart via ->attach() séparés
+                // (mélanger ->attach() + array dans ->post() peut casser l'encodage)
                 $response = \Illuminate\Support\Facades\Http::withHeaders([
                     'X-Api-Key' => $apiKey,
                 ])
+                ->timeout(25)
                 ->attach('image_file', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
-                ->post('https://api.remove.bg/v1.0/removebg', [
-                    'size'     => 'auto',
-                    'bg_color' => 'ffffff',  // Fond blanc pur
-                    'format'   => 'jpg',     // JPG (pas PNG transparent)
-                ]);
+                ->attach('size',     'auto')
+                ->attach('bg_color', 'ffffff')
+                ->attach('format',   'jpg')
+                ->post('https://api.remove.bg/v1.0/removebg');
+
+                \Illuminate\Support\Facades\Log::info('[Détourage] Remove.bg status : ' . $response->status());
 
                 if ($response->successful()) {
                     // ── Étape 2 : Fichier temporaire ────────────────────────
@@ -128,6 +134,8 @@ class CloudinaryService
                     // ── Étape 4 : Nettoyage du fichier temporaire ───────────
                     @unlink($tempPath);
 
+                    \Illuminate\Support\Facades\Log::info('[Détourage] ✅ Succès — ' . $resultat['public_id']);
+
                     return [
                         'url'           => $resultat['secure_url'],
                         'cloudinary_id' => $resultat['public_id'],
@@ -135,14 +143,14 @@ class CloudinaryService
                 }
 
                 \Illuminate\Support\Facades\Log::warning(
-                    '[Détourage] Remove.bg erreur HTTP ' . $response->status()
+                    '[Détourage] Remove.bg erreur HTTP ' . $response->status() . ' — body: ' . substr($response->body(), 0, 500)
                 );
 
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning('[Détourage] Remove.bg exception: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::warning('[Détourage] Exception: ' . $e->getMessage());
             }
         } else {
-            \Illuminate\Support\Facades\Log::warning('[Détourage] REMOVEBG_API_KEY absent du .env');
+            \Illuminate\Support\Facades\Log::warning('[Détourage] REMOVEBG_API_KEY vide ou absent du .env');
         }
 
         // ── Fallback : upload Cloudinary classique si Remove.bg indisponible ─
