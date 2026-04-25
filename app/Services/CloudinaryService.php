@@ -100,10 +100,11 @@ class CloudinaryService
             [
                 'folder'             => $folder,
                 'resource_type'      => 'image',
-                // ── Détourage IA — Remove the Background by Pixelz ──────────
-                // Retire le fond automatiquement via l'add-on Pixelz.
-                // Add-on requis : Marketplace Cloudinary → "Remove the Background" by Pixelz
-                'background_removal' => 'pixelz',
+                // ── Détourage IA — Cloudinary AI (instantané) ───────────────
+                // Retire le fond via l'IA native Cloudinary en quelques secondes.
+                // Pixelz = async (designers humains, heures d'attente) → non adapté.
+                // cloudinary_ai = traitement IA instantané côté serveur Cloudinary.
+                'background_removal' => 'cloudinary_ai',
                 // Fond blanc après détourage + optimisations habituelles
                 'transformation'     => [
                     'background' => 'white',
